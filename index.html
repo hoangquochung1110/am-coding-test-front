@@ -1,58 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Weather & News Dashboard</title>
-  <link rel="stylesheet" href="styles.css">
-  <!-- Vue CDN -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <!-- Axios for API calls -->
-  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-</head>
-<body>
-  <div id="app">
-    <div class="dashboard">
-      <h1>Weather & News Dashboard</h1>
-      
-      <!-- Loading indicator -->
-      <div v-if="loading" class="loading">Loading data...</div>
-      
-      <!-- Error message -->
-      <div v-if="error" class="error">{{ error }}</div>
-      
-      <div v-if="!loading && !error" class="dashboard-grid">
-        <!-- Weather Panel -->
-        <div class="panel weather-panel">
-          <h2>Weather Information</h2>
-          <div v-if="weatherData.length > 0">
-            <div v-for="(item, index) in weatherData" :key="index" class="weather-item">
-              <h3>{{ item.city }}</h3>
-              <p>Temperature: {{ item.temperature }}°C</p>
-              <p>Humidity: {{ item.humidity }}%</p>
-              <p>Updated: {{ formatDate(item.timestamp) }}</p>
-            </div>
-          </div>
-          <div v-else>No weather data available</div>
-        </div>
-        
-        <!-- News Panel -->
-        <div class="panel news-panel">
-          <h2>Latest News</h2>
-          <div v-if="newsData.length > 0">
-            <div v-for="(article, index) in newsData" :key="index" class="news-item">
-              <h3>{{ article.title }}</h3>
-              <p>{{ article.description }}</p>
-              <p class="news-source">Source: {{ article.sourceName || 'Unknown' }}</p>
-              <p class="news-date">Published: {{ formatDate(article.publishedAt) }}</p>
-            </div>
-          </div>
-          <div v-else>No news articles available</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather & News Dashboard</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

@@ -1,6 +1,15 @@
 import { defineConfig } from 'vite';
+import { fileURLToPath, URL } from 'url';
+import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
+  base: '/',
+  plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
   server: {
     proxy: {
       '/api': {
@@ -12,5 +21,15 @@ export default defineConfig({
     },
     cors: true,
     open: true
+  },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url))
+      }
+    }
   }
 });
