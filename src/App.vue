@@ -3,13 +3,24 @@
     <div class="dashboard">
       <h1>Weather & News Dashboard</h1>
       
+      <!-- Cache status indicator -->
+      <div v-if="usingCachedData" class="cache-indicator">
+        Showing cached data from {{ formatDate(cacheTimestamp) }}
+      </div>
+      
+      <!-- Rate limit warning -->
+      <div v-if="rateLimitError" class="warning">
+        {{ rateLimitError }}
+      </div>
+      
       <!-- Loading indicator -->
-      <div v-if="loading" class="loading">Loading data...</div>
+      <div v-if="loading && weatherData.length === 0 && newsData.length === 0" class="loading">Loading data...</div>
       
-      <!-- Error message -->
-      <div v-if="error" class="error">{{ error }}</div>
+      <!-- Error message (only for non-rate-limit errors) -->
+      <div v-if="error && !rateLimitError" class="error">{{ error }}</div>
       
-      <div v-if="!loading && !error" class="dashboard-grid">
+      <!-- Always show dashboard if data exists -->
+      <div v-if="weatherData.length > 0 || newsData.length > 0" class="dashboard-grid">
         <!-- Weather Panel -->
         <div class="panel weather-panel">
           <div class="panel-header">
@@ -95,6 +106,7 @@ export default {
     return {
       loading: false,
       error: null,
+      rateLimitError: null,
       weatherData: [],
       newsData: [],
       weatherPagination: {
@@ -113,7 +125,11 @@ export default {
         hasNextPage: false,
         hasPreviousPage: false
       },
-      refreshInterval: null
+      refreshInterval: null,
+      usingCachedData: false,
+      cacheTimestamp: null,
+      // Cache expiration time (in minutes)
+      cacheExpiryTime: 30
     };
   },
   mounted() {
@@ -133,9 +149,50 @@ export default {
     }
   },
   methods: {
+    // Cache management methods
+    saveToCache(key, data) {
+      try {
+        const cacheItem = {
+          data: data,
+          timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(key, JSON.stringify(cacheItem));
+        console.log(`Data saved to cache: ${key}`);
+      } catch (error) {
+        console.error('Error saving to cache:', error);
+      }
+    },
+    
+    loadFromCache(key) {
+      try {
+        const cachedItem = localStorage.getItem(key);
+        if (!cachedItem) return null;
+        
+        const { data, timestamp } = JSON.parse(cachedItem);
+        
+        // Check if cache is expired
+        const cacheDate = new Date(timestamp);
+        const now = new Date();
+        const diffMinutes = (now - cacheDate) / (1000 * 60);
+        
+        if (diffMinutes > this.cacheExpiryTime) {
+          console.log(`Cache expired for ${key} (${diffMinutes.toFixed(1)} minutes old)`);
+          return null;
+        }
+        
+        console.log(`Loaded from cache: ${key} (${diffMinutes.toFixed(1)} minutes old)`);
+        return { data, timestamp };
+      } catch (error) {
+        console.error('Error loading from cache:', error);
+        return null;
+      }
+    },
+    
     async fetchData() {
       this.loading = true;
       this.error = null;
+      this.rateLimitError = null;
+      this.usingCachedData = false;
       
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
@@ -153,7 +210,6 @@ export default {
         });
         
         console.log('API Response Status:', response.status);
-        console.log('Raw API Response:', JSON.stringify(response.data, null, 2));
         
         if (!response.data) {
           throw new Error('No data received from the API');
@@ -187,21 +243,11 @@ export default {
             hasPreviousPage: Boolean(weatherPagination.hasPreviousPage)
           };
           
-          console.log('Processed weather data:', {
+          // Save to cache
+          this.saveToCache('weather-data', {
             items: this.weatherData,
             pagination: this.weatherPagination
           });
-        } else {
-          console.warn('No valid weather data found in response');
-          this.weatherData = [];
-          this.weatherPagination = {
-            currentPage: 1,
-            itemsPerPage: 10,
-            totalItems: 0,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false
-          };
         }
         
         // Process news data with pagination
@@ -225,29 +271,86 @@ export default {
             hasPreviousPage: Boolean(newsPagination.hasPreviousPage)
           };
           
-          console.log('Processed news data:', {
+          // Save to cache
+          this.saveToCache('news-data', {
             items: this.newsData,
             pagination: this.newsPagination
           });
-        } else {
-          console.warn('No valid news data found in response');
-          this.newsData = [];
-          this.newsPagination = {
-            currentPage: 1,
-            itemsPerPage: 10,
-            totalItems: 0,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false
-          };
         }
+        
+        // Save last successful fetch timestamp
+        this.saveToCache('last-fetch', new Date().toISOString());
+        
       } catch (err) {
         console.error('Error fetching data:', err);
-        this.error = 'Failed to load data. Please try again later.';
+        
+        // Check if this is a rate limit error (429)
+        if (err.response && err.response.status === 429) {
+          // Set the rate limit error message
+          this.rateLimitError = 'Rate limit exceeded. Using cached data. Please try again later.';
+          
+          // Try to load from cache
+          const weatherCache = this.loadFromCache('weather-data');
+          const newsCache = this.loadFromCache('news-data');
+          
+          let cacheLoaded = false;
+          
+          if (weatherCache) {
+            this.weatherData = weatherCache.data.items;
+            this.weatherPagination = weatherCache.data.pagination;
+            this.cacheTimestamp = weatherCache.timestamp;
+            cacheLoaded = true;
+          }
+          
+          if (newsCache) {
+            this.newsData = newsCache.data.items;
+            this.newsPagination = newsCache.data.pagination;
+            if (!this.cacheTimestamp) this.cacheTimestamp = newsCache.timestamp;
+            cacheLoaded = true;
+          }
+          
+          if (cacheLoaded) {
+            this.usingCachedData = true;
+          }
+          
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => {
+            this.rateLimitError = null;
+          }, 5000);
+        } else {
+          // For other errors, set the regular error property
+          this.error = 'Failed to load data. Please try again later.';
+          
+          // Try to load from cache as a fallback
+          const weatherCache = this.loadFromCache('weather-data');
+          const newsCache = this.loadFromCache('news-data');
+          
+          let cacheLoaded = false;
+          
+          if (weatherCache) {
+            this.weatherData = weatherCache.data.items;
+            this.weatherPagination = weatherCache.data.pagination;
+            this.cacheTimestamp = weatherCache.timestamp;
+            cacheLoaded = true;
+          }
+          
+          if (newsCache) {
+            this.newsData = newsCache.data.items;
+            this.newsPagination = newsCache.data.pagination;
+            if (!this.cacheTimestamp) this.cacheTimestamp = newsCache.timestamp;
+            cacheLoaded = true;
+          }
+          
+          if (cacheLoaded) {
+            this.usingCachedData = true;
+            this.error = 'Failed to refresh data. Showing cached data instead.';
+          }
+        }
       } finally {
         this.loading = false;
       }
     },
+    
     formatDate(date) {
       if (!date) return 'N/A';
       try {
@@ -265,6 +368,7 @@ export default {
         return 'N/A';
       }
     },
+    
     async loadWeatherPage(page) {
       if (page < 1 || page > this.weatherPagination.totalPages) return;
       
@@ -285,6 +389,15 @@ export default {
             hasNextPage: Boolean(pagination.hasNextPage),
             hasPreviousPage: Boolean(pagination.hasPreviousPage)
           };
+          
+          // Save to cache
+          this.saveToCache('weather-data', {
+            items: this.weatherData,
+            pagination: this.weatherPagination
+          });
+          
+          this.usingCachedData = false;
+          
           const weatherPanel = document.querySelector('.weather-panel');
           if (weatherPanel) {
             weatherPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -294,16 +407,28 @@ export default {
         }
       } catch (err) {
         console.error('Error loading weather page:', err);
-        this.error = `Failed to load weather data: ${err.message}`;
-        setTimeout(() => {
-          if (this.error === err.message) {
-            this.error = null;
-          }
-        }, 5000);
+        
+        // Check if this is a rate limit error (429)
+        if (err.response && err.response.status === 429) {
+          this.rateLimitError = 'Rate limit exceeded. Using cached data. Please try again later.';
+          
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => {
+            this.rateLimitError = null;
+          }, 5000);
+        } else {
+          this.error = `Failed to load weather data: ${err.message}`;
+          setTimeout(() => {
+            if (this.error === err.message) {
+              this.error = null;
+            }
+          }, 5000);
+        }
       } finally {
         this.loading = false;
       }
     },
+    
     async loadNewsPage(page) {
       if (page < 1 || page > this.newsPagination.totalPages) return;
       
@@ -325,6 +450,14 @@ export default {
             hasPreviousPage: Boolean(pagination.hasPreviousPage)
           };
           
+          // Save to cache
+          this.saveToCache('news-data', {
+            items: this.newsData,
+            pagination: this.newsPagination
+          });
+          
+          this.usingCachedData = false;
+          
           const newsPanel = document.querySelector('.news-panel');
           if (newsPanel) {
             newsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -334,14 +467,25 @@ export default {
         }
       } catch (err) {
         console.error('Error loading news page:', err);
-        this.error = `Failed to load news: ${err.message}`;
         
-        // Auto-clear error after 5 seconds
-        setTimeout(() => {
-          if (this.error === err.message) {
-            this.error = null;
-          }
-        }, 5000);
+        // Check if this is a rate limit error (429)
+        if (err.response && err.response.status === 429) {
+          this.rateLimitError = 'Rate limit exceeded. Using cached data. Please try again later.';
+          
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => {
+            this.rateLimitError = null;
+          }, 5000);
+        } else {
+          this.error = `Failed to load news: ${err.message}`;
+          
+          // Auto-clear error after 5 seconds
+          setTimeout(() => {
+            if (this.error === err.message) {
+              this.error = null;
+            }
+          }, 5000);
+        }
       } finally {
         this.loading = false;
       }

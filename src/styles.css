@@ -194,3 +194,38 @@ h2 {
     font-size: 0.85em;
   }
 }
+
+/* Warning banner for rate limit errors */
+.warning {
+  color: #856404;
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Close button for warnings */
+.close-btn {
+  background: none;
+  border: none;
+  color: #856404;
+  font-size: 1.2em;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+/* Cache indicator banner */
+.cache-indicator {
+  color: #0c5460;
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  padding: 6px 12px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.9em;
+}
