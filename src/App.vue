@@ -3,6 +3,58 @@
     <div class="dashboard">
       <h1>Weather & News Dashboard</h1>
       
+      <div class="filters-row">
+        <!-- City Filter -->
+        <div class="filter-container">
+          <label for="city-filter">City:</label>
+          <select 
+            id="city-filter" 
+            v-model="selectedCity"
+            @change="onCityChange"
+            class="city-select"
+          >
+            <option value="">All Cities</option>
+            <option v-for="city in availableCities" :key="city" :value="city">
+              {{ formatCityName(city) }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Author Search -->
+        <div class="filter-container">
+          <label for="author-filter">Author:</label>
+          <div class="search-input-group">
+            <input
+              id="author-filter"
+              type="text"
+              v-model="searchAuthor"
+              placeholder="Enter author name"
+              @keyup.enter="onAuthorSearch"
+              class="author-input"
+            />
+            <button @click="onAuthorSearch" class="search-button">Search</button>
+            <button v-if="searchAuthor" @click="clearAuthorFilter" class="clear-button">×</button>
+          </div>
+        </div>
+
+        <!-- Content Search -->
+        <div class="filter-container">
+          <label for="content-filter">Search Content:</label>
+          <div class="search-input-group">
+            <input
+              id="content-filter"
+              type="text"
+              v-model="searchContent"
+              placeholder="Search articles..."
+              @keyup.enter="onContentSearch"
+              class="author-input"
+            />
+            <button @click="onContentSearch" class="search-button">Search</button>
+            <button v-if="searchContent" @click="clearContentFilter" class="clear-button">×</button>
+          </div>
+        </div>
+      </div>
+      
       <!-- Cache status indicator -->
       <div v-if="usingCachedData" class="cache-indicator">
         Showing cached data from {{ formatDate(cacheTimestamp) }}
@@ -107,6 +159,10 @@ export default {
       loading: false,
       error: null,
       rateLimitError: null,
+      selectedCity: '',
+      searchAuthor: '',
+      searchContent: '',
+      availableCities: ['singapore', 'ho chi minh', 'hanoi', 'bangkok', 'tokyo', 'seoul'],
       weatherData: [],
       newsData: [],
       weatherPagination: {
@@ -188,6 +244,42 @@ export default {
       }
     },
     
+    formatCityName(city) {
+      if (!city) return 'All Cities';
+      return city
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    },
+    
+    onCityChange() {
+      // Reset to first page when changing city
+      this.weatherPagination.currentPage = 1;
+      this.fetchData();
+    },
+    
+    onAuthorSearch() {
+      // Reset to first page when searching
+      this.newsPagination.currentPage = 1;
+      this.fetchData();
+    },
+    
+    clearAuthorFilter() {
+      this.searchAuthor = '';
+      this.onAuthorSearch();
+    },
+    
+    onContentSearch() {
+      // Reset to first page when searching
+      this.newsPagination.currentPage = 1;
+      this.fetchData();
+    },
+    
+    clearContentFilter() {
+      this.searchContent = '';
+      this.onContentSearch();
+    },
+    
     async fetchData() {
       this.loading = true;
       this.error = null;
@@ -196,7 +288,25 @@ export default {
       
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-        const apiUrl = `${apiBaseUrl}/api/aggregated-data`;
+        let apiUrl = `${apiBaseUrl}/api/aggregated-data`;
+        
+        // Add city filter if selected
+        if (this.selectedCity) {
+          const separator = apiUrl.includes('?') ? '&' : '?';
+          apiUrl += `${separator}city=${encodeURIComponent(this.selectedCity)}`;
+        }
+        
+        // Add author filter if provided
+        if (this.searchAuthor) {
+          const separator = apiUrl.includes('?') ? '&' : '?';
+          apiUrl += `${separator}author=${encodeURIComponent(this.searchAuthor)}`;
+        }
+        
+        // Add content search query if provided
+        if (this.searchContent) {
+          const separator = apiUrl.includes('?') ? '&' : '?';
+          apiUrl += `${separator}query=${encodeURIComponent(this.searchContent)}`;
+        }
         
         console.log(`Starting API request to ${apiUrl}`);
         
@@ -375,7 +485,14 @@ export default {
       this.loading = true;
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-        const response = await axios.get(`${apiBaseUrl}/api/weather?page=${page}&limit=${this.weatherPagination.itemsPerPage}`);
+        let url = `${apiBaseUrl}/api/weather?page=${page}&limit=${this.weatherPagination.itemsPerPage}`;
+        
+        // Add city filter if selected
+        if (this.selectedCity) {
+          url += `&city=${encodeURIComponent(this.selectedCity)}`;
+        }
+        
+        const response = await axios.get(url);
         const data = response.data?.data;
         
         if (data?.items) {
@@ -435,7 +552,17 @@ export default {
       this.loading = true;
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-        const response = await axios.get(`${apiBaseUrl}/api/news?page=${page}&limit=${this.newsPagination.itemsPerPage}`);
+        let url = `${apiBaseUrl}/api/news?page=${page}&limit=${this.newsPagination.itemsPerPage}`;
+        
+        // Add filters if provided
+        if (this.searchAuthor) {
+          url += `&author=${encodeURIComponent(this.searchAuthor)}`;
+        }
+        if (this.searchContent) {
+          url += `&query=${encodeURIComponent(this.searchContent)}`;
+        }
+        
+        const response = await axios.get(url);
         const data = response.data?.data;
         
         if (data?.items) {
@@ -493,3 +620,74 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.filters-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+
+.filter-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-container label {
+  white-space: nowrap;
+  font-weight: bold;
+  color: #333;
+}
+
+.city-select {
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background-color: white;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+.search-input-group {
+  display: flex;
+  min-width: 250px;
+}
+
+.author-input {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+  font-size: 14px;
+  width: 100%;
+}
+
+.search-button {
+  padding: 0 12px;
+  border: 1px solid #ccc;
+  border-left: none;
+  background-color: #f5f5f5;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 0 4px 4px 0;
+}
+
+.clear-button {
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #f5f5f5;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.search-button:hover,
+.clear-button:hover {
+  background-color: #e0e0e0;
+}
+</style>
