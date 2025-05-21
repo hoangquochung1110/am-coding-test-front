@@ -138,10 +138,13 @@ export default {
       this.error = null;
       
       try {
-        console.log('Starting API request to http://localhost:3000/api/aggregated-data');
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+        const apiUrl = `${apiBaseUrl}/api/aggregated-data`;
+        
+        console.log(`Starting API request to ${apiUrl}`);
         
         // Fetch aggregated data from the API
-        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
+        const response = await axios.get(apiUrl, {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
@@ -263,44 +266,25 @@ export default {
       }
     },
     async loadWeatherPage(page) {
-      // Validate page number
-      const targetPage = Math.max(1, Math.min(page, this.weatherPagination.totalPages));
-      if (targetPage === this.weatherPagination.currentPage) return;
+      if (page < 1 || page > this.weatherPagination.totalPages) return;
       
+      this.loading = true;
       try {
-        this.loading = true;
-        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
-          params: {
-            weatherPage: targetPage,
-            weatherLimit: this.weatherPagination.itemsPerPage
-          },
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // Increased timeout for better reliability
-        });
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+        const response = await axios.get(`${apiBaseUrl}/api/weather?page=${page}&limit=${this.weatherPagination.itemsPerPage}`);
+        const data = response.data?.data;
         
-        if (response.data?.success && response.data?.data?.weather) {
-          const weatherData = response.data.data.weather;
-          
-          // Update weather data with validation
-          this.weatherData = Array.isArray(weatherData.items) 
-            ? weatherData.items.filter(item => item.city && typeof item.temperature === 'number')
-            : [];
-            
-          // Update pagination with validation
-          const pagination = weatherData.pagination || {};
+        if (data?.items) {
+          this.weatherData = data.items.filter(item => item.city && typeof item.temperature === 'number');
+          const pagination = data.pagination || {};
           this.weatherPagination = {
-            currentPage: Math.max(1, parseInt(pagination.currentPage) || targetPage),
+            currentPage: Math.max(1, parseInt(pagination.currentPage) || page),
             itemsPerPage: Math.max(1, parseInt(pagination.itemsPerPage) || this.weatherPagination.itemsPerPage),
             totalItems: Math.max(0, parseInt(pagination.totalItems) || this.weatherPagination.totalItems),
             totalPages: Math.max(1, parseInt(pagination.totalPages) || this.weatherPagination.totalPages),
             hasNextPage: Boolean(pagination.hasNextPage),
             hasPreviousPage: Boolean(pagination.hasPreviousPage)
           };
-          
-          // Scroll to top of weather section for better UX
           const weatherPanel = document.querySelector('.weather-panel');
           if (weatherPanel) {
             weatherPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -311,8 +295,6 @@ export default {
       } catch (err) {
         console.error('Error loading weather page:', err);
         this.error = `Failed to load weather data: ${err.message}`;
-        
-        // Auto-clear error after 5 seconds
         setTimeout(() => {
           if (this.error === err.message) {
             this.error = null;
@@ -323,36 +305,19 @@ export default {
       }
     },
     async loadNewsPage(page) {
-      // Validate page number
-      const targetPage = Math.max(1, Math.min(page, this.newsPagination.totalPages));
-      if (targetPage === this.newsPagination.currentPage) return;
+      if (page < 1 || page > this.newsPagination.totalPages) return;
       
+      this.loading = true;
       try {
-        this.loading = true;
-        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
-          params: {
-            newsPage: targetPage,
-            newsLimit: this.newsPagination.itemsPerPage
-          },
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // Increased timeout for better reliability
-        });
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+        const response = await axios.get(`${apiBaseUrl}/api/news?page=${page}&limit=${this.newsPagination.itemsPerPage}`);
+        const data = response.data?.data;
         
-        if (response.data?.success && response.data?.data?.news) {
-          const newsData = response.data.data.news;
-          
-          // Update news data with validation
-          this.newsData = Array.isArray(newsData.items)
-            ? newsData.items.filter(item => item.title && item.url && item.publishedAt)
-            : [];
-            
-          // Update pagination with validation
-          const pagination = newsData.pagination || {};
+        if (data?.items) {
+          this.newsData = data.items.filter(item => item.title && item.url && item.publishedAt);
+          const pagination = data.pagination || {};
           this.newsPagination = {
-            currentPage: Math.max(1, parseInt(pagination.currentPage) || targetPage),
+            currentPage: Math.max(1, parseInt(pagination.currentPage) || page),
             itemsPerPage: Math.max(1, parseInt(pagination.itemsPerPage) || this.newsPagination.itemsPerPage),
             totalItems: Math.max(0, parseInt(pagination.totalItems) || this.newsPagination.totalItems),
             totalPages: Math.max(1, parseInt(pagination.totalPages) || this.newsPagination.totalPages),
@@ -360,7 +325,6 @@ export default {
             hasPreviousPage: Boolean(pagination.hasPreviousPage)
           };
           
-          // Scroll to top of news section for better UX
           const newsPanel = document.querySelector('.news-panel');
           if (newsPanel) {
             newsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
