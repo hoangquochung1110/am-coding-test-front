@@ -89,4 +89,108 @@ h2 {
 .news-item h3 {
   color: #9b59b6;
   margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.panel-header h2 {
+  margin-bottom: 0;
+  border: none;
+  padding-bottom: 0;
+}
+
+/* Pagination Info */
+.pagination-info {
+  font-size: 0.85em;
+  color: #666;
+  background-color: #f8f9fa;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Pagination Controls */
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.pagination-controls button {
+  background-color: #42b983;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s;
+}
+
+.pagination-controls button:hover:not(:disabled) {
+  background-color: #369f76;
+}
+
+.pagination-controls button:disabled {
+  background-color: #a5d6c3;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* News Meta */
+.news-meta {
+  margin: 8px 0;
+  font-size: 0.9em;
+  color: #666;
+}
+
+.news-meta .news-source {
+  margin-right: 8px;
+}
+
+/* Read More Link */
+.read-more {
+  display: inline-block;
+  margin-top: 8px;
+  color: #3498db;
+  text-decoration: none;
+  font-size: 0.9em;
+}
+
+.read-more:hover {
+  text-decoration: underline;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .pagination-info {
+    margin-top: 8px;
+    align-self: flex-start;
+  }
+  
+  .pagination-controls {
+    flex-wrap: wrap;
+  }
+  
+  .pagination-controls button {
+    padding: 6px 12px;
+    font-size: 0.85em;
+  }
 }

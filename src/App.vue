@@ -12,7 +12,13 @@
       <div v-if="!loading && !error" class="dashboard-grid">
         <!-- Weather Panel -->
         <div class="panel weather-panel">
-          <h2>Weather Information</h2>
+          <div class="panel-header">
+            <h2>Weather Information</h2>
+            <div class="pagination-info" v-if="weatherData.length > 0">
+              Page {{ weatherPagination.currentPage }} of {{ weatherPagination.totalPages }}
+              ({{ weatherPagination.totalItems }} total records)
+            </div>
+          </div>
           <div v-if="weatherData.length > 0">
             <div v-for="(item, index) in weatherData" :key="index" class="weather-item">
               <h3>{{ item.city }}</h3>
@@ -20,19 +26,57 @@
               <p>Humidity: {{ item.humidity }}%</p>
               <p>Updated: {{ formatDate(item.timestamp) }}</p>
             </div>
+            <div class="pagination-controls" v-if="weatherPagination.totalPages > 1">
+              <button 
+                @click="loadWeatherPage(weatherPagination.currentPage - 1)" 
+                :disabled="weatherPagination.currentPage <= 1"
+              >
+                Previous
+              </button>
+              <button 
+                @click="loadWeatherPage(weatherPagination.currentPage + 1)" 
+                :disabled="weatherPagination.currentPage >= weatherPagination.totalPages"
+              >
+                Next
+              </button>
+            </div>
           </div>
           <div v-else>No weather data available</div>
         </div>
         
         <!-- News Panel -->
         <div class="panel news-panel">
-          <h2>Latest News</h2>
+          <div class="panel-header">
+            <h2>Latest News</h2>
+            <div class="pagination-info" v-if="newsData.length > 0">
+              Page {{ newsPagination.currentPage }} of {{ newsPagination.totalPages }}
+              ({{ newsPagination.totalItems }} total articles)
+            </div>
+          </div>
           <div v-if="newsData.length > 0">
             <div v-for="(article, index) in newsData" :key="index" class="news-item">
               <h3>{{ article.title }}</h3>
               <p>{{ article.description }}</p>
-              <p class="news-source">Source: {{ article.sourceName || 'Unknown' }}</p>
+              <div class="news-meta">
+                <span class="news-source" v-if="article.author">By {{ article.author }}</span>
+                <span class="news-source" v-if="article.sourceName">• {{ article.sourceName }}</span>
+              </div>
               <p class="news-date">Published: {{ formatDate(article.publishedAt) }}</p>
+              <a v-if="article.url" :href="article.url" target="_blank" class="read-more">Read more</a>
+            </div>
+            <div class="pagination-controls" v-if="newsPagination.totalPages > 1">
+              <button 
+                @click="loadNewsPage(newsPagination.currentPage - 1)" 
+                :disabled="newsPagination.currentPage <= 1"
+              >
+                Previous
+              </button>
+              <button 
+                @click="loadNewsPage(newsPagination.currentPage + 1)" 
+                :disabled="newsPagination.currentPage >= newsPagination.totalPages"
+              >
+                Next
+              </button>
             </div>
           </div>
           <div v-else>No news articles available</div>
@@ -53,10 +97,26 @@ export default {
       error: null,
       weatherData: [],
       newsData: [],
+      weatherPagination: {
+        currentPage: 1,
+        itemsPerPage: 10,
+        totalItems: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPreviousPage: false
+      },
+      newsPagination: {
+        currentPage: 1,
+        itemsPerPage: 10,
+        totalItems: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPreviousPage: false
+      },
       refreshInterval: null
     };
   },
-  async mounted() {
+  mounted() {
     console.log('App mounted, fetching data...');
     this.fetchData();
     
@@ -90,55 +150,93 @@ export default {
         });
         
         console.log('API Response Status:', response.status);
-        console.log('API Response Data:', response.data);
+        console.log('Raw API Response:', JSON.stringify(response.data, null, 2));
         
         if (!response.data) {
           throw new Error('No data received from the API');
         }
         
         // Process the data from the API response
-        const data = response.data.data;
+        const data = response.data?.data;
         
-        // Process weather data
-        if (data && Array.isArray(data.weather)) {
-          // Group by city and get the latest entry for each city
-          const weatherByCity = {};
-          data.weather.forEach(item => {
-            if (item && item.city) {
-              const cityName = item.city.trim();
-              if (!weatherByCity[cityName] || new Date(item.timestamp) > new Date(weatherByCity[cityName].timestamp)) {
-                weatherByCity[cityName] = item;
-              }
-            }
-          });
-          
-          // Convert to array and format the data
-          this.weatherData = Object.values(weatherByCity).map(item => ({
-            city: item.city.trim(),
-            temperature: item.temperature,
-            humidity: item.humidity,
-            timestamp: item.timestamp
-          }));
-          
-          console.log('Processed weather data:', this.weatherData);
-        } else {
-          console.warn('No weather data found in response:', data);
+        if (!data) {
+          throw new Error('Invalid response format: missing data property');
         }
         
-        // Process news data
-        if (data && Array.isArray(data.news)) {
-          this.newsData = data.news
-            .filter(article => article && article.title) // Filter out invalid entries
-            .map(article => ({
-              title: article.title.trim(),
-              description: article.description || 'No description available',
-              sourceName: article.source || 'Unknown',
-              publishedAt: article.publishedAt || new Date().toISOString()
-            }));
+        // Process weather data with pagination
+        if (data.weather?.items && Array.isArray(data.weather.items)) {
+          // Filter out any invalid weather items
+          this.weatherData = data.weather.items.filter(item => 
+            item.city && 
+            typeof item.temperature === 'number' &&
+            typeof item.humidity === 'number' &&
+            item.timestamp
+          );
           
-          console.log('Processed news data:', this.newsData);
+          // Ensure pagination data is valid
+          const weatherPagination = data.weather.pagination || {};
+          this.weatherPagination = {
+            currentPage: Math.max(1, parseInt(weatherPagination.currentPage) || 1),
+            itemsPerPage: Math.max(1, parseInt(weatherPagination.itemsPerPage) || 10),
+            totalItems: Math.max(0, parseInt(weatherPagination.totalItems) || 0),
+            totalPages: Math.max(1, parseInt(weatherPagination.totalPages) || 1),
+            hasNextPage: Boolean(weatherPagination.hasNextPage),
+            hasPreviousPage: Boolean(weatherPagination.hasPreviousPage)
+          };
+          
+          console.log('Processed weather data:', {
+            items: this.weatherData,
+            pagination: this.weatherPagination
+          });
         } else {
-          console.warn('No news data found in response:', data);
+          console.warn('No valid weather data found in response');
+          this.weatherData = [];
+          this.weatherPagination = {
+            currentPage: 1,
+            itemsPerPage: 10,
+            totalItems: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false
+          };
+        }
+        
+        // Process news data with pagination
+        if (data.news?.items && Array.isArray(data.news.items)) {
+          // Filter out any invalid news items
+          this.newsData = data.news.items.filter(item => 
+            item.title && 
+            item.description && 
+            item.url &&
+            item.publishedAt
+          );
+          
+          // Ensure pagination data is valid
+          const newsPagination = data.news.pagination || {};
+          this.newsPagination = {
+            currentPage: Math.max(1, parseInt(newsPagination.currentPage) || 1),
+            itemsPerPage: Math.max(1, parseInt(newsPagination.itemsPerPage) || 10),
+            totalItems: Math.max(0, parseInt(newsPagination.totalItems) || 0),
+            totalPages: Math.max(1, parseInt(newsPagination.totalPages) || 1),
+            hasNextPage: Boolean(newsPagination.hasNextPage),
+            hasPreviousPage: Boolean(newsPagination.hasPreviousPage)
+          };
+          
+          console.log('Processed news data:', {
+            items: this.newsData,
+            pagination: this.newsPagination
+          });
+        } else {
+          console.warn('No valid news data found in response');
+          this.newsData = [];
+          this.newsPagination = {
+            currentPage: 1,
+            itemsPerPage: 10,
+            totalItems: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false
+          };
         }
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -162,6 +260,126 @@ export default {
       } catch (e) {
         console.error('Error formatting date:', e);
         return 'N/A';
+      }
+    },
+    async loadWeatherPage(page) {
+      // Validate page number
+      const targetPage = Math.max(1, Math.min(page, this.weatherPagination.totalPages));
+      if (targetPage === this.weatherPagination.currentPage) return;
+      
+      try {
+        this.loading = true;
+        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
+          params: {
+            weatherPage: targetPage,
+            weatherLimit: this.weatherPagination.itemsPerPage
+          },
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // Increased timeout for better reliability
+        });
+        
+        if (response.data?.success && response.data?.data?.weather) {
+          const weatherData = response.data.data.weather;
+          
+          // Update weather data with validation
+          this.weatherData = Array.isArray(weatherData.items) 
+            ? weatherData.items.filter(item => item.city && typeof item.temperature === 'number')
+            : [];
+            
+          // Update pagination with validation
+          const pagination = weatherData.pagination || {};
+          this.weatherPagination = {
+            currentPage: Math.max(1, parseInt(pagination.currentPage) || targetPage),
+            itemsPerPage: Math.max(1, parseInt(pagination.itemsPerPage) || this.weatherPagination.itemsPerPage),
+            totalItems: Math.max(0, parseInt(pagination.totalItems) || this.weatherPagination.totalItems),
+            totalPages: Math.max(1, parseInt(pagination.totalPages) || this.weatherPagination.totalPages),
+            hasNextPage: Boolean(pagination.hasNextPage),
+            hasPreviousPage: Boolean(pagination.hasPreviousPage)
+          };
+          
+          // Scroll to top of weather section for better UX
+          const weatherPanel = document.querySelector('.weather-panel');
+          if (weatherPanel) {
+            weatherPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        } else {
+          throw new Error('Invalid response format from server');
+        }
+      } catch (err) {
+        console.error('Error loading weather page:', err);
+        this.error = `Failed to load weather data: ${err.message}`;
+        
+        // Auto-clear error after 5 seconds
+        setTimeout(() => {
+          if (this.error === err.message) {
+            this.error = null;
+          }
+        }, 5000);
+      } finally {
+        this.loading = false;
+      }
+    },
+    async loadNewsPage(page) {
+      // Validate page number
+      const targetPage = Math.max(1, Math.min(page, this.newsPagination.totalPages));
+      if (targetPage === this.newsPagination.currentPage) return;
+      
+      try {
+        this.loading = true;
+        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
+          params: {
+            newsPage: targetPage,
+            newsLimit: this.newsPagination.itemsPerPage
+          },
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // Increased timeout for better reliability
+        });
+        
+        if (response.data?.success && response.data?.data?.news) {
+          const newsData = response.data.data.news;
+          
+          // Update news data with validation
+          this.newsData = Array.isArray(newsData.items)
+            ? newsData.items.filter(item => item.title && item.url && item.publishedAt)
+            : [];
+            
+          // Update pagination with validation
+          const pagination = newsData.pagination || {};
+          this.newsPagination = {
+            currentPage: Math.max(1, parseInt(pagination.currentPage) || targetPage),
+            itemsPerPage: Math.max(1, parseInt(pagination.itemsPerPage) || this.newsPagination.itemsPerPage),
+            totalItems: Math.max(0, parseInt(pagination.totalItems) || this.newsPagination.totalItems),
+            totalPages: Math.max(1, parseInt(pagination.totalPages) || this.newsPagination.totalPages),
+            hasNextPage: Boolean(pagination.hasNextPage),
+            hasPreviousPage: Boolean(pagination.hasPreviousPage)
+          };
+          
+          // Scroll to top of news section for better UX
+          const newsPanel = document.querySelector('.news-panel');
+          if (newsPanel) {
+            newsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        } else {
+          throw new Error('Invalid response format from server');
+        }
+      } catch (err) {
+        console.error('Error loading news page:', err);
+        this.error = `Failed to load news: ${err.message}`;
+        
+        // Auto-clear error after 5 seconds
+        setTimeout(() => {
+          if (this.error === err.message) {
+            this.error = null;
+          }
+        }, 5000);
+      } finally {
+        this.loading = false;
       }
     }
   }
