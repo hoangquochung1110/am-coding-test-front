@@ -52,11 +52,25 @@ export default {
       loading: false,
       error: null,
       weatherData: [],
-      newsData: []
+      newsData: [],
+      refreshInterval: null
     };
   },
-  async created() {
-    await this.fetchData();
+  async mounted() {
+    console.log('App mounted, fetching data...');
+    this.fetchData();
+    
+    // Set up auto-refresh every 5 minutes
+    this.refreshInterval = setInterval(() => {
+      console.log('Auto-refreshing data...');
+      this.fetchData();
+    }, 5 * 60 * 1000);
+  },
+  beforeUnmount() {
+    // Clear the interval when component is destroyed
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+    }
   },
   methods: {
     async fetchData() {
@@ -64,27 +78,68 @@ export default {
       this.error = null;
       
       try {
-        // You can add your API calls here
-        // Example:
-        // const weatherResponse = await axios.get('/api/weather');
-        // this.weatherData = weatherResponse.data;
-        // 
-        // const newsResponse = await axios.get('/api/news');
-        // this.newsData = newsResponse.data;
+        console.log('Starting API request to http://localhost:3000/api/aggregated-data');
         
-        // For now, using mock data
-        this.weatherData = [
-          { city: 'New York', temperature: 22, humidity: 65, timestamp: new Date() }
-        ];
+        // Fetch aggregated data from the API
+        const response = await axios.get('http://localhost:3000/api/aggregated-data', {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          timeout: 5000 // 5 second timeout
+        });
         
-        this.newsData = [
-          { 
-            title: 'Sample News Article', 
-            description: 'This is a sample news article description.',
-            sourceName: 'Sample News',
-            publishedAt: new Date()
-          }
-        ];
+        console.log('API Response Status:', response.status);
+        console.log('API Response Data:', response.data);
+        
+        if (!response.data) {
+          throw new Error('No data received from the API');
+        }
+        
+        // Process the data from the API response
+        const data = response.data.data;
+        
+        // Process weather data
+        if (data && Array.isArray(data.weather)) {
+          // Group by city and get the latest entry for each city
+          const weatherByCity = {};
+          data.weather.forEach(item => {
+            if (item && item.city) {
+              const cityName = item.city.trim();
+              if (!weatherByCity[cityName] || new Date(item.timestamp) > new Date(weatherByCity[cityName].timestamp)) {
+                weatherByCity[cityName] = item;
+              }
+            }
+          });
+          
+          // Convert to array and format the data
+          this.weatherData = Object.values(weatherByCity).map(item => ({
+            city: item.city.trim(),
+            temperature: item.temperature,
+            humidity: item.humidity,
+            timestamp: item.timestamp
+          }));
+          
+          console.log('Processed weather data:', this.weatherData);
+        } else {
+          console.warn('No weather data found in response:', data);
+        }
+        
+        // Process news data
+        if (data && Array.isArray(data.news)) {
+          this.newsData = data.news
+            .filter(article => article && article.title) // Filter out invalid entries
+            .map(article => ({
+              title: article.title.trim(),
+              description: article.description || 'No description available',
+              sourceName: article.source || 'Unknown',
+              publishedAt: article.publishedAt || new Date().toISOString()
+            }));
+          
+          console.log('Processed news data:', this.newsData);
+        } else {
+          console.warn('No news data found in response:', data);
+        }
       } catch (err) {
         console.error('Error fetching data:', err);
         this.error = 'Failed to load data. Please try again later.';
@@ -94,7 +149,20 @@ export default {
     },
     formatDate(date) {
       if (!date) return 'N/A';
-      return new Date(date).toLocaleString();
+      try {
+        // Handle both ISO string and timestamp formats
+        const dateObj = new Date(date);
+        return dateObj.toLocaleString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        console.error('Error formatting date:', e);
+        return 'N/A';
+      }
     }
   }
 };
